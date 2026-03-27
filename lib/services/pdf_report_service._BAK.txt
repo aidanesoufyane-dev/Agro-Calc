@@ -1,0 +1,1462 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart' show BuildContext, Navigator, MaterialPageRoute;
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
+import '../models/report_data.dart';
+import '../models/bac_item.dart';
+import '../screens/pdf_preview_screen.dart';
+
+class PdfReportService {
+  // Greens
+  static const _green900  = PdfColor.fromInt(0xFF1B5E20);
+  static const _green800  = PdfColor.fromInt(0xFF2E7D32);
+  static const _green600  = PdfColor.fromInt(0xFF43A047);
+  static const _green400  = PdfColor.fromInt(0xFF66BB6A);
+  static const _green100  = PdfColor.fromInt(0xFFC8E6C9);
+  static const _green50   = PdfColor.fromInt(0xFFF1F8E9);
+  static const _lime      = PdfColor.fromInt(0xFF8BC34A);
+
+  // Blues
+  static const _blue900   = PdfColor.fromInt(0xFF0D47A1);
+  static const _blue700   = PdfColor.fromInt(0xFF1565C0);
+  static const _blue100   = PdfColor.fromInt(0xFFBBDEFB);
+  static const _blue50    = PdfColor.fromInt(0xFFE3F2FD);
+
+  // Browns / soil
+  static const _brown800  = PdfColor.fromInt(0xFF4E342E);
+  static const _brown100  = PdfColor.fromInt(0xFFD7CCC8);
+  static const _brown50   = PdfColor.fromInt(0xFFFBEFE8);
+
+  // Reds
+  static const _red900    = PdfColor.fromInt(0xFFB71C1C);
+  static const _red50     = PdfColor.fromInt(0xFFFFEBEE);
+
+  // Ambers
+  static const _amber700  = PdfColor.fromInt(0xFFF57F17);
+  static const _amber50   = PdfColor.fromInt(0xFFFFF8E1);
+
+  // Neutrals
+  static const _dark      = PdfColor.fromInt(0xFF1A2E1A);
+  static const _gray700   = PdfColor.fromInt(0xFF546E7A);
+  static const _gray300   = PdfColor.fromInt(0xFFB0BEC5);
+  static const _gray100   = PdfColor.fromInt(0xFFF5F5F5);
+  static const _white     = PdfColors.white;
+  static const _sand      = PdfColor.fromInt(0xFFF5F0E8);
+
+  static pw.TextStyle _h1({PdfColor? color}) => pw.TextStyle(
+    font: pw.Font.helveticaBold(), fontSize: 22,
+    color: color ?? _dark, letterSpacing: 0.3);
+
+  static pw.TextStyle _h2({PdfColor? color}) => pw.TextStyle(
+    font: pw.Font.helveticaBold(), fontSize: 15,
+    color: color ?? _dark);
+
+  static pw.TextStyle _h3({PdfColor? color}) => pw.TextStyle(
+    font: pw.Font.helveticaBold(), fontSize: 11,
+    color: color ?? _dark);
+
+  static pw.TextStyle _body({PdfColor? color, double size=9}) =>
+    pw.TextStyle(
+      font: pw.Font.helvetica(), fontSize: size,
+      color: color ?? _dark);
+
+  static pw.TextStyle _bodyBold({PdfColor? color, double size=9}) =>
+    pw.TextStyle(
+      font: pw.Font.helveticaBold(), fontSize: size,
+      color: color ?? _dark);
+
+  static pw.TextStyle _label({PdfColor? color}) => pw.TextStyle(
+    font: pw.Font.helveticaBold(), fontSize: 7.5,
+    color: color ?? _gray700, letterSpacing: 0.8);
+
+  static Future<Uint8List> generateReport(ReportData data) async {
+    final pdf = pw.Document(
+      title: 'Rapport Fertigation NPK',
+      author: 'AgroCalc Pro',
+      subject: 'Analyse Complète de Solution Nutritive',
+      creator: 'AgroCalc Pro v1.0',
+    );
+
+    pdf.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: pw.EdgeInsets.zero,
+      header: (ctx) => ctx.pageNumber > 1
+        ? _buildPageHeader(data, ctx.pageNumber, ctx.pagesCount)
+        : pw.SizedBox(),
+      footer: (ctx) => _buildPageFooter(data, ctx.pageNumber,
+        ctx.pagesCount),
+      build: (ctx) => [
+        _buildCoverHeader(data),
+        _buildBodyPadding(pw.Column(children: [
+          pw.SizedBox(height: 24),
+          _buildInputsSection(data),
+          pw.SizedBox(height: 20),
+          _buildIonicBalanceSection(data),
+          pw.SizedBox(height: 20),
+          _buildECSection(data),
+          pw.SizedBox(height: 20),
+          _buildFertUnitsSection(data),
+          pw.SizedBox(height: 20),
+          _buildNitrogenFormSection(data),
+          if (data.distribution != null) ...[
+            pw.SizedBox(height: 20),
+            _buildBacDistributionSection(data.distribution!),
+          ],
+          pw.SizedBox(height: 20),
+          _buildAgronomiqueAdviceSection(data),
+        ])),
+      ],
+    ));
+
+    return pdf.save();
+  }
+
+  static pw.Widget _buildCoverHeader(ReportData data) {
+    final dateStr = DateFormat('dd MMMM yyyy', 'fr_FR')
+      .format(data.generatedAt);
+    final timeStr = DateFormat('HH:mm').format(data.generatedAt);
+
+    return pw.Container(
+      width: double.infinity,
+      decoration: pw.BoxDecoration(
+        gradient: pw.LinearGradient(
+          colors: [
+            PdfColor.fromInt(0xFF062010),
+            PdfColor.fromInt(0xFF0A2E1A),
+            PdfColor.fromInt(0xFF1B5E20),
+            PdfColor.fromInt(0xFF2E7D32),
+          ],
+          begin: pw.Alignment.topLeft,
+          end: pw.Alignment.bottomRight,
+        ),
+      ),
+      padding: pw.EdgeInsets.fromLTRB(32, 40, 32, 32),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(children: [
+                    pw.Container(
+                      width: 4, height: 32,
+                      decoration: pw.BoxDecoration(
+                        color: _lime,
+                        borderRadius: pw.BorderRadius.circular(2),
+                      ),
+                    ),
+                    pw.SizedBox(width: 12),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('AgroCalc Pro',
+                          style: pw.TextStyle(
+                            font: pw.Font.helveticaBold(),
+                            fontSize: 28, color: _white,
+                            letterSpacing: 0.5)),
+                        pw.Text('Fertigation & Nutrition Calculator',
+                          style: _body(color: _lime, size: 10)),
+                      ],
+                    ),
+                  ]),
+                ],
+              ),
+              pw.Container(
+                width: 72, height: 72,
+                decoration: pw.BoxDecoration(
+                  shape: pw.BoxShape.circle,
+                  border: pw.Border.all(
+                    color: PdfColor(1, 1, 1, 0.3),
+                    width: 2),
+                  color: PdfColor(1, 1, 1, 0.1),
+                ),
+                child: pw.Center(
+                  child: pw.Column(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      pw.Text('NPK',
+                        style: pw.TextStyle(
+                          font: pw.Font.helveticaBold(),
+                          fontSize: 18, color: _white)),
+                      pw.Text('PRO',
+                        style: _label(color: _lime)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 28),
+          pw.Container(
+            padding: pw.EdgeInsets.symmetric(
+              horizontal: 14, vertical: 6),
+            decoration: pw.BoxDecoration(
+              color: PdfColor(_lime.red, _lime.green, _lime.blue, 0.15),
+              borderRadius: pw.BorderRadius.circular(4),
+            ),
+            child: pw.Text('RAPPORT D\'ANALYSE COMPLET',
+              style: _label(color: _lime)),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Text('Solution Nutritive de Fertigation',
+            style: pw.TextStyle(
+              font: pw.Font.helveticaBold(),
+              fontSize: 20, color: _white)),
+          pw.SizedBox(height: 20),
+          pw.Row(children: [
+            _coverChip('Date', dateStr),
+            pw.SizedBox(width: 8),
+            _coverChip('Heure', timeStr),
+            pw.SizedBox(width: 8),
+            _coverChip('Superficie',
+              '${data.supB31.toStringAsFixed(1)} ha'),
+            pw.SizedBox(width: 8),
+            _coverChip('EC Bassin',
+              '${data.eeiM24.toStringAsFixed(2)} mS/cm'),
+          ]),
+          pw.SizedBox(height: 24),
+          pw.Divider(color: PdfColor(_lime.red, _lime.green, _lime.blue, 0.4), thickness: 0.5),
+          pw.SizedBox(height: 12),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _kpiChip('N total', '${data.unitN.toStringAsFixed(2)} kg',
+                'Azote'),
+              _kpiChip('P2O5', '${data.unitP.toStringAsFixed(2)} kg',
+                'Phosphore'),
+              _kpiChip('K2O', '${data.unitK2O.toStringAsFixed(2)} kg',
+                'Potassium'),
+              _kpiChip('EC irrigation',
+                '${data.ecf.toStringAsFixed(2)} mS/cm',
+                'Solution finale'),
+              _kpiChip('Ratio NPK',
+                '1:${data.eqP.toStringAsFixed(1)}:${data.eqK.toStringAsFixed(1)}',
+                'N:P2O5:K2O'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _coverChip(String label, String value) =>
+    pw.Container(
+      padding: pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: pw.BoxDecoration(
+        color: PdfColor(1, 1, 1, 0.12),
+        borderRadius: pw.BorderRadius.circular(20),
+        border: pw.Border.all(
+          color: PdfColor(1, 1, 1, 0.2), width: 0.5),
+      ),
+      child: pw.Row(children: [
+        pw.Text('$label  ', style: _body(color: _lime, size: 8)),
+        pw.Text(value,
+          style: _bodyBold(color: _white, size: 8)),
+      ]),
+    );
+
+  static pw.Widget _kpiChip(
+      String label, String value, String sub) =>
+    pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      children: [
+        pw.Text(label, style: _label(color: _lime)),
+        pw.SizedBox(height: 3),
+        pw.Text(value,
+          style: _bodyBold(color: _white, size: 13)),
+        pw.Text(sub, style: _body(
+          color: PdfColor(1, 1, 1, 0.55), size: 7.5)),
+      ],
+    );
+
+  static pw.Widget _buildPageHeader(ReportData data,
+      int page, int total) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromInt(0xFF0A2E1A),
+        border: pw.Border(
+          bottom: pw.BorderSide(color: _lime, width: 2)),
+      ),
+      padding: pw.EdgeInsets.fromLTRB(32, 12, 32, 12),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text('AgroCalc Pro  -  Rapport Fertigation',
+            style: _bodyBold(color: _white, size: 9)),
+          pw.Text(
+            '${DateFormat('dd/MM/yyyy').format(data.generatedAt)}'
+            '    Page $page / $total',
+            style: _body(color: _lime, size: 8)),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildPageFooter(ReportData data,
+      int page, int total) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(color: _green100, width: 0.5)),
+      ),
+      padding: pw.EdgeInsets.fromLTRB(32, 8, 32, 12),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text('AgroCalc Pro  *  Fertigation Intelligence',
+            style: _body(color: _gray300, size: 7.5)),
+          pw.Row(children: [
+            pw.Container(
+              width: 6, height: 6,
+              decoration: pw.BoxDecoration(
+                color: _lime,
+                shape: pw.BoxShape.circle,
+              ),
+            ),
+            pw.SizedBox(width: 6),
+            pw.Text('Page $page / $total',
+              style: _bodyBold(color: _gray700, size: 7.5)),
+          ]),
+          pw.Text('Document confidentiel - usage interne',
+            style: _body(color: _gray300, size: 7.5)),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildBodyPadding(pw.Widget child) =>
+    pw.Padding(
+      padding: pw.EdgeInsets.symmetric(horizontal: 32),
+      child: child,
+    );
+
+  static pw.Widget _sectionTitle({
+    required String title,
+    required String subtitle,
+    required PdfColor accentColor,
+    PdfColor? bgColor,
+  }) {
+    return pw.Container(
+      margin: pw.EdgeInsets.only(bottom: 12),
+      padding: pw.EdgeInsets.fromLTRB(0, 10, 0, 10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          bottom: pw.BorderSide(
+            color: PdfColor(accentColor.red, accentColor.green, accentColor.blue, 0.3), width: 0.5)),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Container(
+            width: 5, height: 32,
+            decoration: pw.BoxDecoration(
+              color: accentColor,
+              borderRadius: pw.BorderRadius.circular(3),
+            ),
+          ),
+          pw.SizedBox(width: 10),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(title, style: _h2(color: _dark)),
+              pw.SizedBox(height: 2),
+              pw.Text(subtitle,
+                style: _body(color: _gray700, size: 9)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _table({
+    required List<String> headers,
+    required List<List<String>> rows,
+    required List<int> flexes,
+    PdfColor? headerBg,
+    bool boldFirstCol = true,
+    Set<int> accentRows = const {},
+    PdfColor accentRowBg = const PdfColor(0.85, 0.95, 0.85),
+  }) {
+    final hBg = headerBg ?? _green900;
+
+    return pw.Table(
+      columnWidths: {
+        for (int i = 0; i < flexes.length; i++)
+          i: pw.FlexColumnWidth(flexes[i].toDouble()),
+      },
+      children: [
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: hBg),
+          children: headers.map((h) =>
+            pw.Container(
+              padding: pw.EdgeInsets.symmetric(
+                horizontal: 8, vertical: 7),
+              child: pw.Text(h,
+                textAlign: pw.TextAlign.center,
+                style: _bodyBold(color: _white, size: 8.5)),
+            )
+          ).toList(),
+        ),
+        ...rows.asMap().entries.map((e) {
+          final idx = e.key;
+          final row = e.value;
+          final isEven = idx.isEven;
+          final isAccent = accentRows.contains(idx);
+          PdfColor bg;
+          if (isAccent) {
+            bg = accentRowBg;
+          } else {
+            bg = isEven ? _gray100 : _white;
+          }
+          return pw.TableRow(
+            decoration: pw.BoxDecoration(
+              color: bg,
+              border: pw.Border(
+                bottom: pw.BorderSide(
+                  color: _green100, width: 0.3)),
+            ),
+            children: row.asMap().entries.map((cell) {
+              final isFirst = cell.key == 0;
+              return pw.Container(
+                padding: pw.EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 6.5),
+                child: pw.Text(cell.value,
+                  textAlign: isFirst
+                    ? pw.TextAlign.left
+                    : pw.TextAlign.center,
+                  style: isFirst && boldFirstCol
+                    ? _bodyBold(color: _dark, size: 8.5)
+                    : _body(color: _dark, size: 8.5)),
+              );
+            }).toList(),
+          );
+        }),
+      ],
+    );
+  }
+
+  static pw.Widget _chip(
+      String label, String value, PdfColor color) =>
+    pw.Container(
+      padding: pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: pw.BoxDecoration(
+        color: PdfColor(color.red, color.green, color.blue, 0.08),
+        borderRadius: pw.BorderRadius.circular(6),
+        border: pw.Border.all(
+          color: PdfColor(color.red, color.green, color.blue, 0.35), width: 0.8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Text(label, style: _label(color: color)),
+          pw.SizedBox(height: 3),
+          pw.Text(value,
+            style: _bodyBold(color: color, size: 14)),
+        ],
+      ),
+    );
+
+  static pw.Widget _buildInputsSection(ReportData data) {
+    final f = (double v) => v == 0
+      ? '-'
+      : '${v.toStringAsFixed(2)} kg';
+
+    final fertRows = [
+      ['MKP (Monopotassium Phosphate)', f(data.mkpA17),
+       'K + P - Bac B'],
+      ['Nitrate de Potassium',          f(data.npA5),
+       'N(NO3) + K - Bac B'],
+      ['Sulfate de Potassium',          f(data.spA6),
+       'K + S - Bac B'],
+      ['Nitrate de Calcium',            f(data.calA7),
+       'Ca + N(NO3) - Bac A'],
+      ['Acide Nitrique',                f(data.acidA8),
+       'H+ + N(NO3) - Bac C'],
+      ['Acide Phosphorique',            f(data.aphA9),
+       'H+ + P - Bac C'],
+      ['Ammonitrate',                   f(data.ammonA10),
+       'N(NO3+NH4) - Bac B'],
+      ['MAP (Monoammonium Phosphate)',  f(data.mapA11),
+       'P + N(NH4) - Bac B'],
+      ['Uree',                          f(data.ureeA15),
+       'N(NH4) - Bac B'],
+      ['Acide Sulfurique',              f(data.ACIDSULB18),
+       'H+ + S - Bac C'],
+      ['Nitrate de Magnesium (N MgO)', f(data.nmgoA16),
+       'N + Mg - Bac B'],
+      ['Sulfate d\'Ammonium',           f(data.sulamoA14),
+       'N(NH4) + S - Bac B'],
+      ['Chlorure de Potassium (CL,K)', f(data.chlorA12),
+       'K + Cl - Bac B'],
+      ['Sulfate de Magnesium (S MgO)', f(data.smgoA13),
+       'Mg + S - Bac B'],
+    ];
+
+    final paramRows = [
+      ['Solution Fille / T',   '${data.sfF3.toStringAsFixed(2)} T'],
+      ['Solution Mere / L',    '${data.smlM21.toStringAsFixed(2)} L'],
+      ['EC Bassin',            '${data.eeiM24.toStringAsFixed(2)} mS/cm'],
+      ['Superficie',           '${data.supB31.toStringAsFixed(2)} ha'],
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '1.  Quantites Utilisees',
+          subtitle:
+            'Engrais introduits dans la solution et parametres de dilution',
+          accentColor: _green600,
+        ),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 65,
+              child: _table(
+                headers: ['Engrais', 'Quantite', 'Bac / Role'],
+                rows: fertRows,
+                flexes: [5, 2, 3],
+                headerBg: _green800,
+              ),
+            ),
+            pw.SizedBox(width: 14),
+            pw.Expanded(
+              flex: 35,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(
+                    padding: pw.EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                    decoration: pw.BoxDecoration(
+                      color: _blue900,
+                      borderRadius: pw.BorderRadius.only(
+                        topLeft: pw.Radius.circular(4),
+                        topRight: pw.Radius.circular(4)),
+                    ),
+                    child: pw.Text('Parametres',
+                      style: _bodyBold(color: _white, size: 8.5)),
+                  ),
+                  _table(
+                    headers: ['Parametre', 'Valeur'],
+                    rows: paramRows,
+                    flexes: [3, 2],
+                    headerBg: _blue700,
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Container(
+                    padding: pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(
+                      color: _green50,
+                      borderRadius: pw.BorderRadius.circular(6),
+                      border: pw.Border.all(
+                        color: _green100, width: 1),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text('Total engrais',
+                          style: _label(color: _green800)),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          '${(data.mkpA17+data.npA5+data.spA6+data.calA7+data.acidA8+data.aphA9+data.ammonA10+data.mapA11+data.ureeA15+data.ACIDSULB18+data.nmgoA16+data.sulamoA14+data.chlorA12+data.smgoA13).toStringAsFixed(2)} kg',
+                          style: pw.TextStyle(
+                            font: pw.Font.helveticaBold(),
+                            fontSize: 16, color: _green900)),
+                        pw.Text('par apport',
+                          style: _body(color: _gray700, size: 8)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildIonicBalanceSection(ReportData data) {
+    final f = (double v) => v.toStringAsFixed(2);
+
+    final totalAnions  = data.no3 + data.h2po4 + data.so42 + data.clk;
+    final totalCations = data.nh4 + data.k + data.ca
+                       + data.h + data.mg2;
+    final diff = (totalCations - totalAnions).abs();
+
+    final rows = [
+      ['NO3-  (Nitrate)',      f(data.no3),  'meq/L', 'Anion',
+       'Azote nitrique'],
+      ['H2PO4-  (Phosphate)',  f(data.h2po4),'meq/L', 'Anion',
+       'Phosphore assimilable'],
+      ['SO42-  (Sulfate)',     f(data.so42), 'meq/L', 'Anion',
+       'Soufre'],
+      ['Cl-  (Chlorure)',      f(data.clk),  'meq/L', 'Anion',
+       'Indicateur salinite'],
+      ['NH4+  (Ammonium)',     f(data.nh4),  'meq/L', 'Cation',
+       'Azote ammoniacal'],
+      ['K+  (Potassium)',      f(data.k),    'meq/L', 'Cation',
+       'Fertilite / qualite'],
+      ['Ca2+  (Calcium)',      f(data.ca),   'meq/L', 'Cation',
+       'Structure cellulaire'],
+      ['H+  (Proton)',         f(data.h),    'meq/L', 'Cation',
+       'Acidite solution'],
+      ['Mg2+  (Magnesium)',    f(data.mg2),  'meq/L', 'Cation',
+       'Chlorophylle'],
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '2.  Equilibre Ionique',
+          subtitle:
+            'Concentration de chaque ion en meq/L dans la solution finale',
+          accentColor: _green600,
+        ),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 60,
+              child: _table(
+                headers: [
+                  'Ion', 'meq/L', 'Unite', 'Type', 'Role agronomique'
+                ],
+                rows: rows,
+                flexes: [4, 2, 2, 2, 4],
+                headerBg: _green900,
+                accentRows: {4, 5, 6, 7, 8},
+                accentRowBg: _blue50,
+              ),
+            ),
+            pw.SizedBox(width: 14),
+            pw.Expanded(
+              flex: 40,
+              child: pw.Column(
+                children: [
+                  _chip('Total Anions',
+                    '${totalAnions.toStringAsFixed(2)} meq/L',
+                    _blue700),
+                  pw.SizedBox(height: 8),
+                  _chip('Total Cations',
+                    '${totalCations.toStringAsFixed(2)} meq/L',
+                    _green800),
+                  pw.SizedBox(height: 8),
+                  _chip('Difference',
+                    '${diff.toStringAsFixed(2)} meq/L',
+                    diff < 1.0 ? _green600 : _red900),
+                  pw.SizedBox(height: 14),
+                  pw.Container(
+                    padding: pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(
+                      color: _sand,
+                      borderRadius: pw.BorderRadius.circular(6),
+                      border: pw.Border.all(
+                        color: _brown100, width: 0.8),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Legende',
+                          style: _bodyBold(
+                            color: _brown800, size: 8.5)),
+                        pw.SizedBox(height: 6),
+                        _legendRow(_blue50, 'Cations (+)'),
+                        pw.SizedBox(height: 3),
+                        _legendRow(_gray100, 'Anions  (-)'),
+                        pw.SizedBox(height: 8),
+                        pw.Text(
+                          'Un equilibre ideal vise une\n'
+                          'difference < 1 meq/L entre\n'
+                          'total anions et cations.',
+                          style: _body(color: _gray700, size: 7.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _legendRow(PdfColor color, String label) =>
+    pw.Row(children: [
+      pw.Container(
+        width: 14, height: 10,
+        decoration: pw.BoxDecoration(
+          color: color,
+          border: pw.Border.all(color: _gray300, width: 0.5),
+        ),
+      ),
+      pw.SizedBox(width: 6),
+      pw.Text(label, style: _body(color: _dark, size: 8)),
+    ]);
+
+  static pw.Widget _buildECSection(ReportData data) {
+    final f = (double v) => v.toStringAsFixed(2);
+
+    final rows = [
+      ['Q  (Quantite g/L irrigation)', f(data.qgl), 'g/L',
+       'Masse totale d\'engrais par litre d\'eau irriguee'],
+      ['EC  irrigation finale',         f(data.ecf), 'mS/cm',
+       'Conductivite de la solution au point d\'irrigation'],
+      ['Concentration SM',              f(data.con), 'mg/L',
+       'Concentration de la solution mere reconstituee'],
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '3.  Conductivite Electrique',
+          subtitle:
+            'Parametres de la solution d\'irrigation - EC et concentration',
+          accentColor: _blue700,
+        ),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 55,
+              child: _table(
+                headers: ['Parametre', 'Valeur', 'Unite',
+                  'Interpretation'],
+                rows: rows,
+                flexes: [4, 2, 2, 6],
+                headerBg: _blue900,
+              ),
+            ),
+            pw.SizedBox(width: 14),
+            pw.Expanded(
+              flex: 45,
+              child: pw.Container(
+                padding: pw.EdgeInsets.all(14),
+                decoration: pw.BoxDecoration(
+                  gradient: pw.LinearGradient(
+                    colors: [_blue50, _white],
+                    begin: pw.Alignment.topLeft,
+                    end: pw.Alignment.bottomRight,
+                  ),
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(
+                    color: _blue100, width: 1),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Diagnostic EC',
+                      style: _bodyBold(
+                        color: _blue900, size: 10)),
+                    pw.SizedBox(height: 8),
+                    _ecBar(data.ecf),
+                    pw.SizedBox(height: 10),
+                    pw.Text(_interpretEC(data.ecf),
+                      style: _body(color: _dark, size: 8.5)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _ecBar(double ec) {
+    final labels = ['<0.5\nT.Faible','0.5-1.5\nFaible',
+      '1.5-2.5\nOptimal','2.5-3.5\nEleve','>3.5\nT.Eleve'];
+    final colors = [_gray300, _green400, _green800,
+      _amber700, _red900];
+    int active = 0;
+    if (ec >= 3.5)      active = 4;
+    else if (ec >= 2.5) active = 3;
+    else if (ec >= 1.5) active = 2;
+    else if (ec >= 0.5) active = 1;
+
+    return pw.Row(
+      children: List.generate(5, (i) =>
+        pw.Expanded(
+          child: pw.Container(
+            height: i == active ? 34 : 26,
+            margin: pw.EdgeInsets.symmetric(horizontal: 1.5),
+            decoration: pw.BoxDecoration(
+              color: i == active
+                ? colors[i]
+                : PdfColor(colors[i].red, colors[i].green, colors[i].blue, 0.2),
+              borderRadius: pw.BorderRadius.circular(3),
+              border: i == active
+                ? pw.Border.all(color: _dark, width: 1.2)
+                : pw.Border.all(color: _gray300, width: 0.5),
+            ),
+            child: pw.Center(
+              child: pw.Text(labels[i],
+                textAlign: pw.TextAlign.center,
+                style: _body(
+                  color: i == active ? _white : _gray700,
+                  size: 6.5)),
+            ),
+          ),
+        )
+      ),
+    );
+  }
+
+  static String _interpretEC(double ec) {
+    if (ec < 0.5) return
+      'Solution tres diluee. Apport nutritif\n'
+      'insuffisant. Augmenter les doses.';
+    if (ec < 1.5) return
+      'EC faible. Adapte aux semis et jeunes\n'
+      'plantules. Doses moderees.';
+    if (ec < 2.5) return
+      'EC optimale. Plage recommandee pour la\n'
+      'majorite des cultures maraicheres.';
+    if (ec < 3.5) return
+      'EC elevee. Convient aux cultures a fort\n'
+      'besoin en fructification. Surveiller.';
+    return
+      'EC tres elevee. Risque osmotique.\n'
+      'Diluer la solution avant application.';
+  }
+
+  static pw.Widget _buildFertUnitsSection(ReportData data) {
+    final f = (double v) => v.toStringAsFixed(2);
+
+    final rows = [
+      ['N  (Azote)',
+       f(data.unitN), f(data.eqN), f(data.nHa), 'kg/ha'],
+      ['P2O5  (Phosphore)',
+       f(data.unitP), f(data.eqP), f(data.pHa), 'kg/ha'],
+      ['K2O  (Potassium)',
+       f(data.unitK2O), f(data.eqK), f(data.kHa), 'kg/ha'],
+      ['CaO  (Calcium)',
+       f(data.unitCaO), f(data.eqCa), f(data.caHa), 'kg/ha'],
+      ['MgO  (Magnesium)',
+       f(data.unitMgO), f(data.eqMg), f(data.mgHa), 'kg/ha'],
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '4.  Unites Fertilisantes',
+          subtitle:
+            'Apport total, equilibre relatif et dose par hectare',
+          accentColor: _brown800,
+        ),
+        _table(
+          headers: [
+            'Element', 'Unites totales (kg)',
+            'Equilibre / N', 'Unites / ha', 'Unite'
+          ],
+          rows: rows,
+          flexes: [4, 3, 2, 3, 2],
+          headerBg: _brown800,
+        ),
+        pw.SizedBox(height: 10),
+        pw.Container(
+          padding: pw.EdgeInsets.all(14),
+          decoration: pw.BoxDecoration(
+            gradient: pw.LinearGradient(
+              colors: [_green50, _white],
+              begin: pw.Alignment.topLeft,
+              end: pw.Alignment.bottomRight,
+            ),
+            borderRadius: pw.BorderRadius.circular(8),
+            border: pw.Border.all(
+              color: _green100, width: 1),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Ratio NPK de la formule',
+                    style: _bodyBold(color: _dark, size: 10)),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'N : P2O5 : K2O  =  '
+                    '1 : ${data.eqP.toStringAsFixed(2)}'
+                    ' : ${data.eqK.toStringAsFixed(2)}',
+                    style: pw.TextStyle(
+                      font: pw.Font.helveticaBold(),
+                      fontSize: 16, color: _green900)),
+                ],
+              ),
+              pw.Row(children: [
+                _chip('N/ha',
+                  '${data.nHa.toStringAsFixed(1)} kg',
+                  _green800),
+                pw.SizedBox(width: 8),
+                _chip('P2O5/ha',
+                  '${data.pHa.toStringAsFixed(1)} kg',
+                  _brown800),
+                pw.SizedBox(width: 8),
+                _chip('K2O/ha',
+                  '${data.kHa.toStringAsFixed(1)} kg',
+                  _blue900),
+              ]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildNitrogenFormSection(ReportData data) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '5.  Forme Azotee',
+          subtitle:
+            'Repartition en % entre azote nitrique et ammoniacal',
+          accentColor: _green600,
+        ),
+        pw.Row(children: [
+          pw.Expanded(
+            child: pw.Container(
+              padding: pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                color: _green50,
+                borderRadius: pw.BorderRadius.circular(8),
+                border: pw.Border.all(
+                  color: _green100, width: 1),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text('NO3-  (Nitrique)',
+                    style: _bodyBold(color: _green900, size: 9)),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    '${data.pNO3.toStringAsFixed(1)} %',
+                    style: pw.TextStyle(
+                      font: pw.Font.helveticaBold(),
+                      fontSize: 30, color: _green800)),
+                  pw.Text('de l\'azote total',
+                    style: _body(color: _gray700, size: 8)),
+                ],
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 10),
+          pw.Expanded(
+            child: pw.Container(
+              padding: pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                color: _amber50,
+                borderRadius: pw.BorderRadius.circular(8),
+                border: pw.Border.all(
+                  color: PdfColor.fromInt(0xFFFFCC80), width: 1),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text('NH4+  (Ammoniacal)',
+                    style: _bodyBold(
+                      color: PdfColor.fromInt(0xFFE65100),
+                      size: 9)),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    '${data.pNH4.toStringAsFixed(1)} %',
+                    style: pw.TextStyle(
+                      font: pw.Font.helveticaBold(),
+                      fontSize: 30,
+                      color: PdfColor.fromInt(0xFFF57C00))),
+                  pw.Text('de l\'azote total',
+                    style: _body(color: _gray700, size: 8)),
+                ],
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 10),
+          pw.Expanded(
+            child: pw.Container(
+              padding: pw.EdgeInsets.all(14),
+              decoration: pw.BoxDecoration(
+                color: _sand,
+                borderRadius: pw.BorderRadius.circular(8),
+                border: pw.Border.all(
+                  color: _brown100, width: 1),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Recommandation',
+                    style: _bodyBold(
+                      color: _brown800, size: 9)),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    _nitrogenRec(data.pNH4),
+                    style: _body(color: _dark, size: 8.5)),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  static String _nitrogenRec(double pNH4) {
+    if (pNH4 < 10) return
+      'Tres bon ratio NO3/NH4.\n'
+      'Solution bien equilibree,\n'
+      'adaptee a toutes cultures.';
+    if (pNH4 < 25) return
+      'Bon equilibre nitrique/\nammoniacal. Convient a\nla majorite des cultures.';
+    if (pNH4 < 40) return
+      'Proportion NH4 elevee.\n'
+      'Surveiller par temps chaud.\n'
+      'Risque toxicite ammoniacale.';
+    return
+      'Trop d\'ammonium. Reduire\nuree, MAP et ammonitrate.\nAugmenter nitrates.';
+  }
+
+  static pw.Widget _buildBacDistributionSection(
+      DistributionResult dist) {
+
+    pw.Widget statusBanner;
+    if (dist.errorMessage != null) {
+      statusBanner = _statusBanner(
+        label: 'ERREUR DE BALANCE',
+        message: dist.errorMessage!,
+        bgColor: _red50,
+        borderColor: _red900,
+        textColor: _red900,
+      );
+    } else if (dist.warningMessage != null) {
+      statusBanner = _statusBanner(
+        label: 'AVERTISSEMENT',
+        message: dist.warningMessage!,
+        bgColor: _amber50,
+        borderColor: _amber700,
+        textColor: _amber700,
+      );
+    } else {
+      statusBanner = _statusBanner(
+        label: 'EQUILIBRE ATTEINT',
+        message: 'BacA = BacB  -  La distribution est correctement equilibree.',
+        bgColor: _green50,
+        borderColor: _green600,
+        textColor: _green800,
+      );
+    }
+
+    pw.Widget? movedWidget;
+    final movedNK  = dist.movedNitrateKkg;
+    final movedAM  = dist.movedAmmonKg;
+    if (movedNK > 0 || movedAM > 0) {
+      final movedRows = <List<String>>[];
+      if (movedNK > 0) movedRows.add([
+        'Nitrate de Potassium',
+        '${movedNK.toStringAsFixed(2)} kg',
+        '${dist.movedNitrateKmmol.toStringAsFixed(2)} mmol/L',
+        'BacB  =>  BacA',
+      ]);
+      if (movedAM > 0) movedRows.add([
+        'Ammonitrate',
+        '${movedAM.toStringAsFixed(2)} kg',
+        '${dist.movedAmmonMmol.toStringAsFixed(2)} mmol/L',
+        'BacB  =>  BacA',
+      ]);
+      movedWidget = pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(height: 10),
+          pw.Container(
+            padding: pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: _blue50,
+              borderRadius: pw.BorderRadius.circular(6),
+              border: pw.Border(
+                left: pw.BorderSide(
+                  color: _blue700, width: 3)),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('Ajustements de balance effectues',
+                  style: _bodyBold(color: _blue900, size: 9)),
+                pw.SizedBox(height: 6),
+                _table(
+                  headers: [
+                    'Engrais transfere', 'Quantite (kg)',
+                    'Quantite (mmol/L)', 'Mouvement'
+                  ],
+                  rows: movedRows,
+                  flexes: [4, 2, 3, 3],
+                  headerBg: _blue700,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    pw.Widget bacTable(String name, String subtitle,
+        PdfColor headerColor, BacResult bac) {
+      final rows = bac.items.map((item) => [
+        item.wasMoved ? '** ${item.label}' : item.label,
+        item.kg.toStringAsFixed(2),
+        item.mmol.toStringAsFixed(2),
+      ]).toList()
+      ..add(['TOTAL',
+        bac.totalKg.toStringAsFixed(2),
+        bac.totalMmol.toStringAsFixed(2)]);
+
+      final accentIdx = rows.length - 1;
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            padding: pw.EdgeInsets.fromLTRB(10, 7, 10, 7),
+            decoration: pw.BoxDecoration(
+              color: headerColor,
+              borderRadius: pw.BorderRadius.only(
+                topLeft: pw.Radius.circular(6),
+                topRight: pw.Radius.circular(6)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment:
+                pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(name,
+                  style: _bodyBold(color: _white, size: 11)),
+                pw.Text(subtitle,
+                  style: _body(
+                    color: PdfColor(_white.red, _white.green, _white.blue, 0.8), size: 8)),
+              ],
+            ),
+          ),
+          _table(
+            headers: ['Engrais', 'kg', 'mmol/L'],
+            rows: rows,
+            flexes: [5, 2, 2],
+            headerBg: PdfColor(headerColor.red, headerColor.green, headerColor.blue, 0.7),
+            accentRows: {accentIdx},
+            accentRowBg: PdfColor(headerColor.red, headerColor.green, headerColor.blue, 0.12),
+          ),
+          if (bac.items.any((i) => i.wasMoved))
+            pw.Padding(
+              padding: pw.EdgeInsets.only(top: 4, left: 2),
+              child: pw.Text(
+                '** Engrais transfere depuis BacB pour equilibrage',
+                style: _body(
+                  color: _amber700, size: 7.5)),
+            ),
+        ],
+      );
+    }
+
+    final diffKg =
+      (dist.bacA.totalKg - dist.bacB.totalKg).abs();
+    final diffMmol =
+      (dist.bacA.totalMmol - dist.bacB.totalMmol).abs();
+    final compRows = [
+      ['Bac A  (Solution Calcique)',
+        dist.bacA.totalKg.toStringAsFixed(2),
+        dist.bacA.totalMmol.toStringAsFixed(2)],
+      ['Bac B  (Solution Principale)',
+        dist.bacB.totalKg.toStringAsFixed(2),
+        dist.bacB.totalMmol.toStringAsFixed(2)],
+      ['Bac C  (Solution Acide)',
+        dist.bacC.totalKg.toStringAsFixed(2),
+        dist.bacC.totalMmol.toStringAsFixed(2)],
+      ['Difference  A vs B',
+        diffKg.toStringAsFixed(2),
+        diffMmol.toStringAsFixed(2)],
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '6.  Distribution des Bacs',
+          subtitle:
+            'Repartition des engrais en 3 solutions separees + '
+            'verification de l\'equilibre BacA = BacB',
+          accentColor: _blue700,
+        ),
+        statusBanner,
+        if (movedWidget != null) movedWidget,
+        pw.SizedBox(height: 12),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: bacTable(
+                'BAC A', 'Solution Calcique',
+                _green900, dist.bacA),
+            ),
+            pw.SizedBox(width: 10),
+            pw.Expanded(
+              child: bacTable(
+                'BAC B', 'Solution Principale',
+                _blue900, dist.bacB),
+            ),
+            pw.SizedBox(width: 10),
+            pw.Expanded(
+              child: bacTable(
+                'BAC C', 'Solution Acide',
+                _red900, dist.bacC),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 14),
+        pw.Container(
+          padding: pw.EdgeInsets.all(12),
+          decoration: pw.BoxDecoration(
+            color: _gray100,
+            borderRadius: pw.BorderRadius.circular(8),
+            border: pw.Border.all(
+              color: _gray300, width: 0.8),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Comparaison des Bacs',
+                style: _bodyBold(color: _dark, size: 10)),
+              pw.SizedBox(height: 8),
+              _table(
+                headers: [
+                  'Bac', 'Total (kg)', 'Total (mmol/L)'
+                ],
+                rows: compRows,
+                flexes: [4, 2, 2],
+                headerBg: _gray700,
+                accentRows: {3},
+                accentRowBg: diffKg < 0.01 ? _green50 : _red50,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _statusBanner({
+    required String label,
+    required String message,
+    required PdfColor bgColor,
+    required PdfColor borderColor,
+    required PdfColor textColor,
+  }) =>
+    pw.Container(
+      width: double.infinity,
+      padding: pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: bgColor,
+        borderRadius: pw.BorderRadius.circular(6),
+        border: pw.Border(
+          left: pw.BorderSide(color: borderColor, width: 4)),
+      ),
+      child: pw.Row(children: [
+        pw.Container(
+          padding: pw.EdgeInsets.symmetric(
+            horizontal: 8, vertical: 3),
+          decoration: pw.BoxDecoration(
+            color: borderColor,
+            borderRadius: pw.BorderRadius.circular(3),
+          ),
+          child: pw.Text(label,
+            style: _bodyBold(color: _white, size: 8)),
+        ),
+        pw.SizedBox(width: 12),
+        pw.Expanded(
+          child: pw.Text(message,
+            style: _body(color: textColor, size: 8.5)),
+        ),
+      ]),
+    );
+
+  static pw.Widget _buildAgronomiqueAdviceSection(
+      ReportData data) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          title: '7.  Conseils Agronomiques',
+          subtitle:
+            'Recommandations basees sur l\'analyse de la solution',
+          accentColor: _lime,
+        ),
+        pw.Table(
+          columnWidths: {
+            0: pw.FlexColumnWidth(1),
+            1: pw.FlexColumnWidth(1),
+            2: pw.FlexColumnWidth(1),
+          },
+          children: [
+            pw.TableRow(children: [
+              _adviceCard(
+                title: 'Conductivite EC',
+                body: _interpretEC(data.ecf),
+                level: _ecAdviceLevel(data.ecf),
+              ),
+              pw.SizedBox(width: 8),
+              _adviceCard(
+                title: 'Forme Azotee',
+                body: _nitrogenRec(data.pNH4),
+                level: data.pNH4 < 25 ? 'OK' : 'Attention',
+              ),
+              pw.SizedBox(width: 8),
+              _adviceCard(
+                title: 'Equilibre Ionique',
+                body: _ionicAdvice(data),
+                level: _ionicLevel(data),
+              ),
+            ]),
+          ],
+        ),
+        pw.SizedBox(height: 10),
+        pw.Container(
+          padding: pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            color: _sand,
+            borderRadius: pw.BorderRadius.circular(6),
+            border: pw.Border.all(color: _brown100, width: 0.8),
+          ),
+          child: pw.Text(
+            'Ce rapport est genere automatiquement par AgroCalc Pro '
+            'a titre indicatif. Les valeurs sont calculees sur la base '
+            'des formules agronomiques standard. Il appartient a '
+            'l\'utilisateur de valider les resultats avec un agronome '
+            'certifie avant toute application terrain.',
+            style: _body(color: _gray700, size: 7.5)),
+        ),
+      ],
+    );
+  }
+
+  static String _ecAdviceLevel(double ec) {
+    if (ec < 0.5 || ec > 3.5) return 'Attention';
+    if (ec >= 1.5 && ec < 2.5) return 'OK';
+    return 'Surveiller';
+  }
+
+  static String _ionicAdvice(ReportData data) {
+    final diff =
+      ((data.nh4+data.k+data.ca+data.h+data.mg2) -
+       (data.no3+data.h2po4+data.so42+data.clk)).abs();
+    if (diff < 0.5) return
+      'Equilibre ionique excellent.\n'
+      'Solution bien tamponnee.';
+    if (diff < 2.0) return
+      'Leger desequilibre ionique.\n'
+      'Acceptable pour la plupart\ndes cultures.';
+    return
+      'Desequilibre ionique notable.\n'
+      'Verifier les formules et\nreajuster les doses.';
+  }
+
+  static String _ionicLevel(ReportData data) {
+    final diff =
+      ((data.nh4+data.k+data.ca+data.h+data.mg2) -
+       (data.no3+data.h2po4+data.so42+data.clk)).abs();
+    if (diff < 0.5) return 'OK';
+    if (diff < 2.0) return 'Surveiller';
+    return 'Attention';
+  }
+
+  static pw.Widget _adviceCard({
+    required String title,
+    required String body,
+    required String level,
+  }) {
+    final levelColor = level == 'OK'
+      ? _green800
+      : level == 'Surveiller'
+        ? _amber700
+        : _red900;
+
+    return pw.Container(
+      padding: pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColor(levelColor.red, levelColor.green, levelColor.blue, 0.06),
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(
+          color: PdfColor(levelColor.red, levelColor.green, levelColor.blue, 0.3), width: 1),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment:
+              pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(title,
+                style: _bodyBold(color: _dark, size: 9.5)),
+              pw.Container(
+                padding: pw.EdgeInsets.symmetric(
+                  horizontal: 7, vertical: 3),
+                decoration: pw.BoxDecoration(
+                  color: levelColor,
+                  borderRadius: pw.BorderRadius.circular(10),
+                ),
+                child: pw.Text(level,
+                  style: _bodyBold(
+                    color: _white, size: 7.5)),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(body,
+            style: _body(color: _dark, size: 8.5)),
+        ],
+      ),
+    );
+  }
+
+  static Future<String> savePdfToTemp(
+      Uint8List bytes, DateTime date) async {
+    final dir = await getTemporaryDirectory();
+    final fileName =
+      'AgroCalc_Rapport_'
+      '${DateFormat('yyyyMMdd_HHmm').format(date)}.pdf';
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
+
+  static Future<void> sharePdf(
+      Uint8List bytes, DateTime date) async {
+    final path = await savePdfToTemp(bytes, date);
+    await Share.shareXFiles(
+      [XFile(path, mimeType: 'application/pdf')],
+      subject: 'Rapport Fertigation NPK - AgroCalc Pro',
+      text:
+        'Rapport d\'analyse de solution nutritive '
+        'genere par AgroCalc Pro.',
+    );
+  }
+
+  static Future<void> previewPdf(
+      Uint8List bytes, BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfPreviewScreen(reportData: ReportData(generatedAt: DateTime.now(), ACIDSULB18: 0, acidA8: 0, ammonA10: 0, aphA9: 0, ca: 0, caHa: 0, calA7: 0, chlorA12: 0, clk: 0, con: 0, ecf: 0, eeiM24: 0, eqCa: 0, eqK: 0, eqMg: 0, eqN: 0, eqP: 0, h: 0, h2po4: 0, k: 0, kHa: 0, mapA11: 0, mg2: 0, mgHa: 0, mkpA17: 0, nHa: 0, nh4: 0, nmgoA16: 0, no3: 0, npA5: 0, pNH4: 0, pNO3: 0, pHa: 0, qgl: 0, sfF3: 0, smgoA13: 0, smlM21: 0, so42: 0, spA6: 0, sulamoA14: 0, supB31: 0, unitCaO: 0, unitK2O: 0, unitMgO: 0, unitN: 0, unitP: 0, ureeA15: 0)),
+      ),
+    );
+  }
+}
